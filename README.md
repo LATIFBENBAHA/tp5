@@ -208,6 +208,7 @@ Les implications vont bien au-delà du technique :
 **Contexte :** À Düsseldorf, pas de sauvegarde offline. Résultat : dépendance complète à la clé fournie par les criminels.
 
 **Architecture cible (3-2-1 pour hôpital) :**
+![generated-image](https://github.com/user-attachments/assets/14ca4ef7-1902-4357-a46a-440f40ab0a71)
 
 ```
 PRODUCTION (Systèmes en ligne 24/7)
@@ -281,6 +282,7 @@ Testage OBLIGATOIRE (non négociable pour santé) :
 **Contexte :** À Düsseldorf, les urgences ont dû fermer = inacceptable. Un hôpital DOIT pouvoir fonctionner en mode dégradé même avec SI complètement indisponible.
 
 **Processus d'escalade & basculement :**
+![scenar](https://github.com/user-attachments/assets/a0604a59-d909-48ab-bb60-8b89a058f000)
 
 ```
 SCÉNARIO : SI complètement indisponible (ransomware, panne majeure, attaque)
@@ -397,6 +399,7 @@ Cette architecture divise l'hôpital en plusieurs "zones sécurisées" isolées 
 **Avantage :** Si un attaquant entre par une zone (admin), il ne peut pas atteindre les systèmes critiques (clinique) directement — il doit franchir plusieurs pare-feu.
 
 ##### 5. Architecture Zero Trust – Implémentation Hospitalière
+<img width="1024" height="1024" alt="3" src="https://github.com/user-attachments/assets/f54a628c-48d3-4b0f-b55e-df86a0ffd833" />
 
 ```markdown
 Concept central : "Ne faire confiance à PERSONNE" — pas même un administrateur.

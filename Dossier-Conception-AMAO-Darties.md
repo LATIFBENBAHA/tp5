@@ -1,14 +1,3 @@
-# DARTIES - Dossier de Conception AMAO
-
-**Projet :** Système Décisionnel pour la Direction Commerciale  
-**Entreprise :** Darties (Darty, Leroy-Merlin, Boulanger)  
-**Version :** 1.0 - Conception Technique  
-**Date :** 21 janvier 2026  
-**Statut :** Dossier de Conception Complet  
-**Pages :** 20-25
-
----
-
 ## 1. INTRODUCTION ET RAPPEL DES EXIGENCES
 
 ### 1.1 Objectif du Document

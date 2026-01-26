@@ -489,742 +489,887 @@ Amiens        | 437       | 502.4     | ... | 178
 **Temps exécution :** <1 minute
 
 ---
+Parfait ! Voici les **parties restantes du Dossier de Conception SANS Backend**, bien structurées et adaptées à ton projet :
 
-## 5. CONCEPTION BACKEND - API REST
+***
 
-### 5.1 Architecture Application
+# DARTIES - Dossier de Conception AMAO (SUITE)
 
-**Technologie :** Java Spring Boot 3.x
+## 5. CONNEXION POWER BI - POSTGRESQL (Remplace Backend API)
 
-**Structure Projet :**
-```
-darties-backend/
-├── src/main/java/com/darties/
-│   ├── DartiesApplication.java       # Main Spring Boot
-│   ├── controller/
-│   │   ├── AuthController.java       # Login/Logout
-│   │   ├── IndicateurController.java # CA, TM, NbV
-│   │   ├── OngletController.java     # Accueil, Historique, etc
-│   │   └── ExportController.java     # PDF, Excel, CSV
-│   ├── service/
-│   │   ├── AuthService.java          # Authentification
-│   │   ├── IndicateurService.java    # Calculs KPI
-│   │   ├── FiltreService.java        # Application filtres
-│   │   └── ExportService.java        # Génération exports
-│   ├── repository/
-│   │   ├── IndicateurRepository.java # Requêtes faits
-│   │   └── DimensionRepository.java  # Requêtes dimensions
-│   ├── model/
-│   │   ├── User.java
-│   │   ├── Indicateur.java
-│   │   └── Filtre.java
-│   ├── dto/
-│   │   ├── IndicateurDTO.java
-│   │   └── UserDTO.java
-│   ├── security/
-│   │   ├── JwtTokenProvider.java
-│   │   └── SecurityConfig.java
-│   └── config/
-│       └── DataSourceConfig.java
-├── pom.xml                           # Maven dépendances
-└── application.properties             # Configuration
-```
+### 5.1 Architecture de Connexion Directe
 
-**Dépendances Spring Boot :**
-```xml
-<dependency>
-    <groupId>org.springframework.boot</groupId>
-    <artifactId>spring-boot-starter-web</artifactId>
-</dependency>
-<dependency>
-    <groupId>org.springframework.boot</groupId>
-    <artifactId>spring-boot-starter-data-jpa</artifactId>
-</dependency>
-<dependency>
-    <groupId>org.postgresql</groupId>
-    <artifactId>postgresql</artifactId>
-</dependency>
-<dependency>
-    <groupId>io.jsonwebtoken</groupId>
-    <artifactId>jjwt</artifactId>
-</dependency>
-<dependency>
-    <groupId>com.itextpdf</groupId>
-    <artifactId>itextpdf</artifactId>
-</dependency>
-```
+**Mode de connexion : DirectQuery** [learn.microsoft](https://learn.microsoft.com/en-us/power-bi/connect-data/desktop-directquery-about)
 
-### 5.2 Endpoints REST Principaux
-
-**Base URL :** `https://api.darties.com/api/v1`
-
-**1. AUTHENTIFICATION**
+Power BI se connecte **directement** à PostgreSQL sans couche intermédiaire (pas d'API REST nécessaire).
 
 ```
-POST /auth/login
-Body: { "username": "jean.dupont@darties.com", "password": "***" }
-Response: { "token": "eyJhbGciOiJIUzI1NiIs...", "profil": "DC", "valideTo": "2026-01-26T14:32:00Z" }
-Status: 200 ou 401
-
-GET /auth/profile
-Headers: Authorization: Bearer <token>
-Response: { "id": 1, "username": "jean.dupont@darties.com", "profil": "DC", "region": null, "magasin": null }
-Status: 200
+┌──────────────┐                    ┌──────────────┐
+│  Power BI    │──── DirectQuery ───│  PostgreSQL  │
+│  Desktop     │    (Requêtes SQL)  │  Data        │
+│              │◄─── Résultats ─────│  Warehouse   │
+└──────────────┘                    └──────────────┘
 ```
 
-**2. INDICATEURS KPI**
+**Avantages DirectQuery pour Darties :**
+- ✅ **Temps réel** : Données actualisées automatiquement
+- ✅ **Pas de duplication** : Pas de copie des 300K lignes
+- ✅ **Performance** : PostgreSQL avec index <2 secondes [stackoverflow](https://stackoverflow.com/questions/71493388/improving-performance-on-postgresql-for-powerbi-direct-query-usage)
+- ✅ **Simplicité** : Pas de code backend à développer
+- ✅ **Sécurité** : Connexion SSL chiffrée
 
+### 5.2 Configuration Connexion dans Power BI Desktop
+
+**Étape 1 : Obtenir les données**
 ```
-GET /indicateurs/ca?mois=202601&region=1&magasin=null
-Response: { "ca_budget": 50000, "ca_reel": 52000, "ecart_pct": 4.0 }
-Status: 200
-
-GET /indicateurs/marge?mois=202601&profil=DC
-Response: { "tm_budget": 25.5, "tm_reel": 26.2, "ecart_pct": 2.7 }
-Status: 200
-
-GET /indicateurs/ventes?annee=2025,2026&enseigne=Darty
-Response: [
-  { "mois": "2025-01", "nbv_budget": 1000, "nbv_reel": 950 },
-  { "mois": "2025-02", "nbv_budget": 1100, "nbv_reel": 1120 }
-]
-Status: 200
-```
-
-**3. ONGLETS**
-
-```
-GET /onglets/accueil?filtres={date:202601,region:1}
-Response: {
-  "carte": { "points": [...], "indicateur": "ca" },
-  "kpi": { "ca": 52000, "tm": 26.2, "nbv": 950 },
-  "tableau": [{ "produit": "Hi-fi", "ca": 20000, ... }]
-}
-Status: 200
-
-GET /onglets/historique?annees=2025,2026&produit=1
-Response: {
-  "graphique_courbes": [{ "mois": "2025-01", "budget": 50000, "reel": 52000 }],
-  "tableau": [...]
-}
-Status: 200
-
-GET /onglets/detail?mois=202601&region=1
-Response: {
-  "ecarts": [{ "produit": "Hi-fi", "budget": 20000, "reel": 22000, "ecart_pct": 10 }],
-  "poids": [{ "produit": "Hi-fi", "poids_ca": 42 }]
-}
-Status: 200
-
-GET /onglets/palmares?classement=ca&region=1
-Response: [
-  { "rang": 1, "magasin": "Paris 15", "ca": 52000, "diff_meilleur": 0 },
-  { "rang": 2, "magasin": "Lyon", "ca": 50000, "diff_meilleur": -2000 }
-]
-Status: 200
+1. Power BI Desktop > Accueil > Obtenir des données
+2. Rechercher "PostgreSQL database"
+3. Saisir :
+   - Serveur : localhost:5432 (ou IP serveur distant)
+   - Base de données : darties_dw
+4. Mode Connectivité données : DirectQuery ✓ (PAS Import)
+5. Options avancées : Instruction SQL personnalisée (optionnel)
 ```
 
-**4. EXPORTS**
-
+**Étape 2 : Authentification**
 ```
-GET /exports/pdf?onglet=accueil&filtres={...}
-Response: PDF binaire
-Content-Type: application/pdf
-
-GET /exports/excel?graphique=historique_ca
-Response: Excel binaire
-Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
-
-GET /exports/csv?donnees=palmares
-Response: CSV texte
-Content-Type: text/csv
+- Type : Base de données
+- Nom d'utilisateur : darties_powerbi
+- Mot de passe : [mot de passe sécurisé]
+- Chiffrement : Exiger SSL ✓
 ```
 
-### 5.3 Gestion Authentification et Droits
-
-**Authentification JWT :**
-
-```java
-public String generateToken(User user) {
-    long now = System.currentTimeMillis();
-    long expiryTime = now + (2 * 60 * 60 * 1000); // 2 heures
-    
-    return Jwts.builder()
-        .setSubject(user.getUsername())
-        .claim("profil", user.getProfil())
-        .claim("region", user.getRegionId())
-        .claim("magasin", user.getMagasinId())
-        .setIssuedAt(new Date(now))
-        .setExpiration(new Date(expiryTime))
-        .signWith(SignatureAlgorithm.HS512, secret)
-        .compact();
-}
+**Étape 3 : Sélectionner tables**
+```
+☑ FAIT_ACTIVITE
+☑ DIM_TEMPS
+☑ DIM_GEOGRAPHIE
+☑ DIM_MAGASIN
+☑ DIM_ENSEIGNE
+☑ DIM_PRODUIT
+☑ DIM_DEVISE
+☑ USERS (pour RLS)
 ```
 
-**Filtrage Données par Profil :**
+**Étape 4 : Gestion Relations**
 
-```java
-@Service
-public class FiltreService {
-    
-    public Query appliquerFiltresProfil(User user, Query query) {
-        if ("DC".equals(user.getProfil())) {
-            // Directeur Commercial : Pas de filtre
-            return query;
-        } else if ("DR".equals(user.getProfil())) {
-            // Directeur Régional : Filtre par région
-            return query.where("region_id", "=", user.getRegionId());
-        } else if ("RM".equals(user.getProfil())) {
-            // Responsable Magasin : Filtre par magasin
-            return query.where("magasin_id", "=", user.getMagasinId());
-        }
-        return query;
-    }
-}
+Power BI détecte automatiquement les relations (Foreign Keys) :
+
+```
+FAIT_ACTIVITE.id_temps → DIM_TEMPS.id_temps (Many-to-One)
+FAIT_ACTIVITE.id_magasin → DIM_MAGASIN.id_magasin (Many-to-One)
+FAIT_ACTIVITE.id_geographie → DIM_GEOGRAPHIE.id_geographie (Many-to-One)
+FAIT_ACTIVITE.id_produit → DIM_PRODUIT.id_produit (Many-to-One)
+FAIT_ACTIVITE.id_enseigne → DIM_ENSEIGNE.id_enseigne (Many-to-One)
 ```
 
-**Table USERS :**
+**Vérification :** Onglet "Modèle" dans Power BI Desktop affiche schéma en étoile complet.
 
+### 5.3 Génération Automatique Requêtes SQL
+
+**Power BI traduit automatiquement les visuels en requêtes SQL optimisées**. [learn.microsoft](https://learn.microsoft.com/en-us/power-bi/connect-data/desktop-directquery-about)
+
+**Exemple 1 : KPI Chiffre d'Affaires**
+
+Visuel Power BI :
+```
+KPI Card : Somme de chiffre_affaires
+Filtre : type_valeur = 'Réalisé'
+```
+
+Requête SQL générée par Power BI :
 ```sql
-CREATE TABLE USERS (
-    id_user INT PRIMARY KEY AUTO_INCREMENT,
-    username VARCHAR(100) UNIQUE NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
-    email VARCHAR(100) UNIQUE,
-    profil VARCHAR(20) NOT NULL, -- 'DC', 'DR', 'RM'
-    id_region INT REFERENCES DIM_GEOGRAPHIE(id_geographie),
-    id_magasin INT REFERENCES DIM_MAGASIN(id_magasin),
-    date_creation TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    actif BOOLEAN DEFAULT TRUE
-);
-```
-
-### 5.4 Calculs Agrégations Clés
-
-**Chiffre d'Affaires Total :**
-```sql
-SELECT SUM(chiffre_affaires) as ca_total
+SELECT SUM(chiffre_affaires) AS ca_total
 FROM FAIT_ACTIVITE
-WHERE type_valeur = 'Réalisé'
-  AND id_temps IN (SELECT id_temps FROM DIM_TEMPS WHERE annee = 2026 AND mois = 01)
-  AND id_magasin = ? -- Filtré selon profil
+WHERE type_valeur = 'Réalisé';
 ```
 
-**Taux Marge Pondéré :**
+**Exemple 2 : Graphique par Région**
+
+Visuel Power BI :
+```
+Graphique Barres : CA par Région (2026)
+Axe X : DIM_GEOGRAPHIE[region]
+Axe Y : SUM(FAIT_ACTIVITE[chiffre_affaires])
+Filtre : DIM_TEMPS[annee] = 2026
+```
+
+Requête SQL générée :
 ```sql
 SELECT 
-  SUM(chiffre_affaires * taux_marge) / SUM(chiffre_affaires) as tm_pondere
-FROM FAIT_ACTIVITE
-WHERE type_valeur = 'Réalisé'
-  AND id_temps IN (...)
+    geo.region,
+    SUM(fa.chiffre_affaires) AS ca_total
+FROM FAIT_ACTIVITE fa
+JOIN DIM_GEOGRAPHIE geo ON fa.id_geographie = geo.id_geographie
+JOIN DIM_TEMPS t ON fa.id_temps = t.id_temps
+WHERE t.annee = 2026 
+  AND fa.type_valeur = 'Réalisé'
+GROUP BY geo.region
+ORDER BY ca_total DESC;
 ```
 
-**Écart Budget vs Réalisé :**
-```sql
-SELECT 
-  (SUM(CASE WHEN type_valeur = 'Réalisé' THEN chiffre_affaires ELSE 0 END) -
-   SUM(CASE WHEN type_valeur = 'Budget' THEN chiffre_affaires ELSE 0 END)) as ecart_abs,
-   
-  ((SUM(CASE WHEN type_valeur = 'Réalisé' THEN chiffre_affaires ELSE 0 END) -
-    SUM(CASE WHEN type_valeur = 'Budget' THEN chiffre_affaires ELSE 0 END)) /
-   SUM(CASE WHEN type_valeur = 'Budget' THEN chiffre_affaires ELSE 0 END) * 100) as ecart_pct
-FROM FAIT_ACTIVITE
-```
+**Aucun code backend à écrire !** Power BI génère tout automatiquement ✓
 
----
+### 5.4 Optimisations PostgreSQL pour DirectQuery
 
-## 6. CONCEPTION FRONTEND - POWER BI
-
-### 6.1 Choix Power BI au lieu de React
-
-**Justification Décision :**
-
-| Critère | Impact |
-|---------|--------|
-| **Délai (30 mai 2026)** | Power BI : 3 sem développement ✓ vs React : 8 sem ✗ |
-| **Expertise équipe** | Power BI : Apprentissage MIAGE ✓ vs React : Expertise JS requise ✗ |
-| **Fonctionnalités requises** | Toutes natives dans Power BI ✓ |
-| **Coût développement** | Power BI : Gratuit Desktop ✓ vs React : Serveur Node + frais infra ✗ |
-| **RLS (3 profils)** | Power BI : Intégré RLS DAX ✓ vs React : Code custom ✗ |
-| **Exports PDF/Excel** | Power BI : Natif ✓ vs React : Bibliothèques tierces ✗ |
-| **Maintenance** | Power BI : Microsoft support ✓ vs React : Équipe custom ✗ |
-
-**Résultat :** **Power BI Desktop + Power BI Service choisi** pour maximaliser délai et minimiser risques.
-
-### 6.2 Architecture Power BI
-
-**Composition :**
-
-1. **Power BI Desktop** (Développement local)
-   - Connexion à PostgreSQL
-   - Création 4 pages rapport
-   - Définition DAX pour RLS
-   - Tests avec utilisateurs
-
-2. **Power BI Service** (Publication web)
-   - Hébergement rapport en cloud
-   - Authentification Microsoft Entra ID
-   - Application Row-Level Security (RLS)
-   - Accès navigateur + mobile
-
-### 6.3 Structure Rapport Power BI
-
-**Onglet 1 : ACCUEIL (Vue Synthétique)**
-
-Visuels :
-- Carte géographique (ArcGIS) : 
-  - Localisation magasins/régions
-  - Indicateur superposé (CA/TM/NbV)
-  - Code couleur dynamique
-  
-- 3 KPI Cards :
-  - CA réalisé (gros chiffre)
-  - Taux Marge %
-  - Nombre Ventes
-
-- Tableau matriciel :
-  - Lignes : Produits (Hi-fi, Fours, DVD)
-  - Colonnes : Régions (IDF, Nord-Est, etc)
-  - Valeurs : CA avec code couleur
-
-- Graphique barres :
-  - Comparaison CA par produit
-
-Segments filtres (gauche) :
-- Date (mois/année)
-- Enseigne (multi-select)
-- Produit (multi-select)
-- Ville (dropdown)
-- Région (multi-select selon droits)
-- Bouton réinitialisation
-
-**Onglet 2 : HISTORIQUE (Analyse 2 Ans)**
-
-Visuels :
-- Graphique courbes :
-  - X : Mois (24 mois)
-  - Y : CA / TM / NbV
-  - 3 lignes : Budget vs Réalisé vs Estimé
-
-- Graphique barres comparatif :
-  - 2025 vs 2026 (par produit)
-
-- Tableau détaillé :
-  - Mois | Produit | Budget | Réalisé | Estimé | Écart %
-
-**Onglet 3 : DÉTAIL (Écarts)**
-
-Visuels :
-- Tableau écarts :
-  - Colonne 1-7 : Produit | Budget | Réalisé | Estimé | Écart Abs | Écart % | Poids %
-  - Format conditionnel : Vert (>5%) / Orange (±5%) / Rouge (<-5%)
-
-- Graphique waterfall :
-  - Visualisation écarts cumulés par produit
-
-- Graphique donut (poids) :
-  - Part CA chaque produit
-
-**Onglet 4 : PALMARÈS (Classements)**
-
-Visuels (3 tableaux côte à côte) :
-
-Tableau 1 - Classement CA :
-- Rang | Magasin | CA | Diff au meilleur | Variation vs mois précédent
-
-Tableau 2 - Classement Marge :
-- Rang | Magasin | Taux Marge % | Variation
-
-Tableau 3 - Classement Ventes :
-- Rang | Magasin | Nb Ventes | Variation
-
-### 6.4 Implémentation RLS (Row-Level Security)
-
-**Étape 1 : Créer Colonne Profil dans Data**
+**Index stratégiques pour performance :** [stackoverflow](https://stackoverflow.com/questions/71493388/improving-performance-on-postgresql-for-powerbi-direct-query-usage)
 
 ```sql
--- Dans PostgreSQL, créer table d'accès
-CREATE TABLE ROLE_ACCESS (
-    id INT PRIMARY KEY,
-    username VARCHAR(100),
-    profil VARCHAR(20), -- 'DC', 'DR', 'RM'
-    region VARCHAR(50),
-    magasin INT
-);
+-- Index sur Foreign Keys (jointures rapides)
+CREATE INDEX idx_fait_temps ON FAIT_ACTIVITE(id_temps);
+CREATE INDEX idx_fait_magasin ON FAIT_ACTIVITE(id_magasin);
+CREATE INDEX idx_fait_geographie ON FAIT_ACTIVITE(id_geographie);
+CREATE INDEX idx_fait_produit ON FAIT_ACTIVITE(id_produit);
+CREATE INDEX idx_fait_enseigne ON FAIT_ACTIVITE(id_enseigne);
+
+-- Index sur colonnes filtrées fréquemment
+CREATE INDEX idx_fait_type ON FAIT_ACTIVITE(type_valeur);
+CREATE INDEX idx_temps_annee ON DIM_TEMPS(annee);
+CREATE INDEX idx_temps_mois ON DIM_TEMPS(mois);
+CREATE INDEX idx_geo_region ON DIM_GEOGRAPHIE(region);
+
+-- Index composite pour requêtes complexes
+CREATE INDEX idx_fait_periode_type ON FAIT_ACTIVITE(id_temps, type_valeur);
+CREATE INDEX idx_fait_magasin_temps ON FAIT_ACTIVITE(id_magasin, id_temps);
 ```
 
-**Étape 2 : Créer Mesures DAX dans Power BI**
+**Vérification performance requêtes :**
+```sql
+EXPLAIN ANALYZE
+SELECT SUM(chiffre_affaires) 
+FROM FAIT_ACTIVITE 
+WHERE id_temps = 394;
 
+-- Chercher : "Index Scan" (BON ✓) vs "Seq Scan" (MAUVAIS ✗)
+```
+
+**Configuration PostgreSQL optimale :**
+```ini
+# Dans postgresql.conf
+shared_buffers = 256MB          # Cache mémoire
+effective_cache_size = 1GB      # RAM disponible
+work_mem = 4MB                  # Mémoire par opération
+maintenance_work_mem = 64MB     # Maintenance index
+max_connections = 50            # Connexions simultanées
+```
+
+### 5.5 Mesures DAX pour Indicateurs
+
+**Power BI utilise DAX (Data Analysis Expressions) pour calculs.** [learn.microsoft](https://learn.microsoft.com/en-us/fabric/security/service-admin-row-level-security)
+
+**Mesure 1 : Chiffre d'Affaires Réalisé**
 ```dax
--- Mesure pour Directeur Commercial (pas de filtre)
-RoleEval_DC = 
-VAR UserRole = USERPRINCIPALNAME()
-RETURN IF(
-    CALCULATETABLE(
-        FILTER(ROLE_ACCESS, [username] = UserRole AND [profil] = "DC")
-    ) > 0,
-    TRUE(),
-    FALSE()
-)
-
--- Mesure pour Directeur Régional (filtre région)
-RoleEval_DR =
-VAR UserRole = USERPRINCIPALNAME()
-RETURN IF(
-    CALCULATETABLE(
-        FILTER(ROLE_ACCESS, [username] = UserRole AND [profil] = "DR")
-    ) > 0,
-    [Region] = VALUES(ROLE_ACCESS[Region]),
-    FALSE()
-)
-
--- Mesure pour Responsable Magasin (filtre magasin)
-RoleEval_RM =
-VAR UserRole = USERPRINCIPALNAME()
-RETURN IF(
-    CALCULATETABLE(
-        FILTER(ROLE_ACCESS, [username] = UserRole AND [profil] = "RM")
-    ) > 0,
-    [Magasin] = VALUES(ROLE_ACCESS[Magasin]),
-    FALSE()
+CA_Reel = 
+CALCULATE(
+    SUM(FAIT_ACTIVITE[chiffre_affaires]),
+    FAIT_ACTIVITE[type_valeur] = "Réalisé"
 )
 ```
 
-**Étape 3 : Appliquer RLS dans Power BI Service**
+**Mesure 2 : Chiffre d'Affaires Budget**
+```dax
+CA_Budget = 
+CALCULATE(
+    SUM(FAIT_ACTIVITE[chiffre_affaires]),
+    FAIT_ACTIVITE[type_valeur] = "Budget"
+)
+```
 
-1. Accéder à **Paramètres > Sécurité**
-2. Créer 3 rôles :
-   - Rôle "National" (pas de filtre)
-   - Rôle "Regional" (filtre par région)
-   - Rôle "Magasin" (filtre par magasin)
+**Mesure 3 : Écart Réalisé vs Budget (%)**
+```dax
+Ecart_Pct = 
+VAR Reel = [CA_Reel]
+VAR Budget = [CA_Budget]
+RETURN
+    IF(
+        Budget <> 0,
+        DIVIDE(Reel - Budget, Budget) * 100,
+        BLANK()
+    )
+```
 
-3. Ajouter règles DAX à chaque rôle
-4. Assigner utilisateurs aux rôles dans Power BI Service
+**Mesure 4 : Taux de Marge Pondéré**
+```dax
+TM_Pondere = 
+DIVIDE(
+    SUMX(
+        FAIT_ACTIVITE,
+        FAIT_ACTIVITE[chiffre_affaires] * FAIT_ACTIVITE[taux_marge]
+    ),
+    SUM(FAIT_ACTIVITE[chiffre_affaires])
+)
+```
 
-**Étape 4 : Authentification Microsoft Entra ID**
+**Mesure 5 : Code Couleur Performance**
+```dax
+Couleur_Performance = 
+VAR Ecart = [Ecart_Pct]
+RETURN
+    SWITCH(
+        TRUE(),
+        Ecart > 5, "Vert",     -- Dépassement >5%
+        Ecart < -5, "Rouge",   -- Décrochage <-5%
+        "Orange"               -- Entre -5% et +5%
+    )
+```
 
-Power BI intègre automatiquement Azure AD :
-- Utilisateurs authentifiés via email professionnel
-- Assignation automatique rôle basée groupe AD
-- Token valide 24h (configurable)
+***
 
-### 6.5 Comportement Filtres et Recalcul
+## 6. INTERFACE POWER BI
 
-**Mécanisme Power BI :**
+### 6.1 Architecture Complète Power BI
 
-1. Utilisateur change filtre (ex: Région = "Île-de-France")
-2. Événement déclenché dans segment
-3. **TOUS les visuels actualisent automatiquement** :
-   - Carte met à jour couleurs
-   - KPI recalculent
-   - Tableaux filtrent
-   - Graphiques re-dessinent
+```
+┌─────────────────────────────────────────────────────────┐
+│              POWER BI - SOLUTION COMPLÈTE               │
+├─────────────────────────────────────────────────────────┤
+│                                                          │
+│  Power BI Desktop (Développement Local)                 │
+│  ├── Connexion PostgreSQL DirectQuery                   │
+│  ├── 4 Pages Rapport (Accueil, Historique, ...)        │
+│  ├── 50+ Visuels (graphiques, tableaux, carte)         │
+│  ├── Segments Filtres (Date, Région, Produit...)       │
+│  ├── Mesures DAX (CA, TM, Écarts, ...)                 │
+│  └── Row-Level Security (3 rôles)                      │
+│         ↓ Publier                                       │
+│  Power BI Service (Cloud Microsoft)                     │
+│  ├── Hébergement rapport web                            │
+│  ├── Authentification Microsoft Entra ID                │
+│  ├── Accès navigateur + mobile                         │
+│  ├── Actualisation automatique (quotidienne)           │
+│  └── Partage contrôlé (emails utilisateurs)            │
+│         ↓                                               │
+│  Utilisateurs (3 profils)                               │
+│  ├── Directeur Commercial → Vue nationale               │
+│  ├── Directeur Régional → Vue régionale                │
+│  └── Responsable Magasin → Vue magasin                 │
+│                                                          │
+└─────────────────────────────────────────────────────────┘
+```
 
-4. **Bouton Réinitialisation** :
-   - Réinitialise TOUS les segments
-   - Recharge PAGE complète
-   - Retrouve état initial exact
+### 6.2 Structure des 4 Pages Rapport
 
-**Performance :** Actualisation <500 ms (cache Power BI)
+#### **Page 1 : ACCUEIL (Vue Synthétique)**
 
----
+**Objectif :** Vue d'ensemble exploitable en réunion
+
+**Visuels (10 composants) :**
+
+1. **Titre dynamique avec contexte**
+   ```dax
+   Titre = "Tableau de Bord Darties - " & 
+           SELECTEDVALUE(DIM_TEMPS[mois_nom]) & " " & 
+           SELECTEDVALUE(DIM_TEMPS[annee])
+   ```
+
+2. **3 KPI Cards (CA, TM, NbV)**
+   - KPI 1 : CA Réalisé vs Budget
+   - KPI 2 : Taux de Marge %
+   - KPI 3 : Nombre de Ventes
+   - Indicateurs : Flèche ↑/↓ + code couleur
+
+3. **Carte géographique ArcGIS**
+   - Localisation : DIM_GEOGRAPHIE[ville]
+   - Bulle taille : CA
+   - Couleur bulle : Écart % (vert/orange/rouge)
+   - Tooltip : CA, TM, NbV au survol
+
+4. **Tableau matriciel Produits × Régions**
+   ```
+   Lignes : DIM_PRODUIT[famille_produit]
+   Colonnes : DIM_GEOGRAPHIE[region]
+   Valeurs : [CA_Reel]
+   Format conditionnel : Échelle couleur selon performance
+   ```
+
+5. **Graphique barres CA par Enseigne**
+   - Axe X : DIM_ENSEIGNE[nom_enseigne]
+   - Axe Y : [CA_Reel]
+
+6. **Segments Filtres (Panneau gauche)**
+   - ☐ Date (Mois/Année)
+   - ☐ Enseigne (Multi-select)
+   - ☐ Produit (Multi-select)
+   - ☐ Ville (Dropdown)
+   - ☐ Région (Multi-select selon droits RLS)
+   - Bouton "Réinitialiser" : Supprime tous filtres
+
+**Interactions :** Clic sur carte → Filtre automatique autres visuels
+
+#### **Page 2 : HISTORIQUE (Analyse 2 Ans)**
+
+**Objectif :** Comparer performance sur 2025-2026
+
+**Visuels (8 composants) :**
+
+1. **Graphique courbes temporelles (principal)**
+   - Axe X : DIM_TEMPS[date_complete] (24 mois)
+   - Axe Y : [CA_Reel], [CA_Budget], [CA_Estimé]
+   - 3 courbes distinctes avec légendes
+
+2. **Graphique barres comparatif 2025 vs 2026**
+   - Axe X : DIM_TEMPS[mois_nom]
+   - Axe Y : [CA_Reel]
+   - Colonnes groupées par année
+
+3. **Tableau récapitulatif**
+   ```
+   Colonnes : Mois | Produit | Budget | Réalisé | Estimé | Écart % | Tendance
+   Tri : Date décroissante
+   Format : Nombre avec séparateurs milliers
+   ```
+
+4. **Graphique courbes Taux de Marge évolution**
+   - Axe X : Mois
+   - Axe Y : [TM_Pondere]
+   - Ligne seuil objectif (25%)
+
+5. **Graphique aire Nombre de Ventes cumulées**
+   - Axe X : Mois
+   - Axe Y : Cumul [Nb_Ventes]
+
+6. **Segments Filtres** (identiques page Accueil)
+
+**Interaction :** Clic sur mois → Drill-down vers détail semaine
+
+#### **Page 3 : DÉTAIL (Écarts et Performance)**
+
+**Objectif :** Identifier moteurs performance et zones décrochage
+
+**Visuels (7 composants) :**
+
+1. **Tableau détaillé écarts**
+   ```
+   Colonnes :
+   - Famille Produit
+   - Budget (€)
+   - Réalisé (€)
+   - Estimé (€)
+   - Écart Abs (€)
+   - Écart % (%)
+   - Poids Budget (%)
+   - Poids Réalisé (%)
+   
+   Format conditionnel Écart % :
+   - Vert si > 5%
+   - Orange si entre -5% et +5%
+   - Rouge si < -5%
+   ```
+
+2. **Graphique Waterfall (cascade) des écarts**
+   - Départ : Budget Total
+   - Barres : Écart par produit (positif/négatif)
+   - Arrivée : Réalisé Total
+
+3. **Graphique Donut (camembert) Poids CA**
+   - Secteurs : DIM_PRODUIT[famille_produit]
+   - Valeurs : % du CA total
+
+4. **Graphique barres empilées CA décomposé**
+   - Axe X : DIM_GEOGRAPHIE[region]
+   - Axe Y : [CA_Reel]
+   - Couleurs : DIM_PRODUIT[famille_produit]
+
+5. **Matrice Drill-down**
+   ```
+   Hiérarchie : Région > Magasin > Produit
+   Valeurs : CA, TM, NbV
+   Boutons +/- pour expand/collapse
+   ```
+
+6. **Graphique colonnes écart par magasin (Top 10)**
+   - Axe X : DIM_MAGASIN[nom_magasin]
+   - Axe Y : [Ecart_Pct]
+   - Tri : Écart décroissant
+
+7. **Segments Filtres**
+
+**Interaction :** Drill-through vers vue magasin détaillée
+
+#### **Page 4 : PALMARÈS (Classements)**
+
+**Objectif :** Classements exploitables par commune/magasin
+
+**Visuels (6 composants) :**
+
+1. **Tableau classement CA**
+   ```
+   Colonnes :
+   - Rang (calculé avec RANKX)
+   - Magasin
+   - Ville
+   - CA Réalisé (€)
+   - Diff au 1er (€)
+   - Variation vs mois précédent (%)
+   
+   Tri : CA décroissant
+   Top N : 20 magasins
+   Format conditionnel : Ligne du magasin utilisateur en surbrillance
+   ```
+
+2. **Tableau classement Taux de Marge**
+   ```
+   Colonnes : Rang | Magasin | Ville | TM % | Variation
+   Tri : TM décroissant
+   ```
+
+3. **Tableau classement Nombre de Ventes**
+   ```
+   Colonnes : Rang | Magasin | Ville | NbV | Variation
+   Tri : NbV décroissant
+   ```
+
+4. **Graphique barres Top 5 magasins**
+   - Axe X : CA
+   - Axe Y : Magasin
+   - Couleur : Selon région
+
+5. **Carte concentration CA par ville**
+   - Géolocalisation : Ville
+   - Taille bulle : CA
+   - Affichage classement en tooltip
+
+6. **Segments Filtres + Export**
+   - Bouton "Exporter en Excel" (natif Power BI)
+
+**Mesure DAX Classement :**
+```dax
+Rang_CA = 
+RANKX(
+    ALL(DIM_MAGASIN[nom_magasin]),
+    [CA_Reel],
+    ,
+    DESC,
+    DENSE
+)
+```
+
+### 6.3 Comportement Filtres Dynamiques
+
+**Mécanisme Power BI (100% automatique) :**
+
+1. **Utilisateur change filtre** (ex: Région = "Île-de-France")
+2. **Power BI recalcule** toutes mesures avec nouveau contexte
+3. **TOUS les visuels s'actualisent** simultanément (<500 ms)
+4. **Requêtes SQL optimisées** envoyées à PostgreSQL avec WHERE region = 'IDF'
+
+**Synchronisation cross-page :**
+- Filtres appliqués sur Page 1 → Conservés sur Pages 2,3,4
+- Navigation entre pages → Filtres persistent
+- Option : "Effacer les filtres" par page ou global
+
+**Bouton Réinitialisation :**
+```
+Action : Bookmarks Power BI
+1. Créer signet "État Initial" (sans filtres)
+2. Associer bouton "Réinitialiser" au signet
+3. Clic bouton → Restaure état initial exact ✓
+```
+
+### 6.4 Exports Natifs Power BI
+
+**Export PDF (natif)** :
+```
+Onglet Fichier > Exporter > PDF
+Options :
+☑ Page actuelle ou Toutes les pages
+☑ Inclure filtres actifs (annotation)
+☑ Haute qualité impression
+Génération : ~5-10 secondes
+```
+
+**Export Excel/CSV (natif)** :
+```
+Clic droit sur tableau/graphique > Exporter données
+Formats :
+- .xlsx (avec mise en forme)
+- .csv (données brutes)
+Données exportées : Exactement celles affichées (avec filtres) ✓
+```
+
+**Impression (native)** :
+```
+Fichier > Imprimer
+Options :
+- Format A4 paysage
+- Inclut en-tête avec filtres actifs
+- Aperçu avant impression
+```
+
+**Aucun code export nécessaire !** Tout est natif Power BI ✓
+
+***
 
 ## 7. SÉCURITÉ ET AUTHENTIFICATION
 
-### 7.1 Architecture Sécurité
+### 7.1 Authentification Automatique Microsoft Entra ID
 
-**Niveaux de Sécurité :**
+**Power BI utilise Microsoft Entra ID (anciennement Azure AD) automatiquement.** [learn.microsoft](https://learn.microsoft.com/fr-fr/power-bi/connect-data/service-gateway-active-directory-sso)
 
-1. **Transport** : HTTPS/TLS (certificat SSL)
-2. **Authentification** : JWT tokens (2h validity)
-3. **Autorisation** : RLS Power BI + Filtrage backend
-4. **Audit** : Logs toutes requêtes utilisateur
-5. **Données** : Chiffrement colonnes sensibles (optionnel)
+**Configuration (une seule fois) :**
 
-### 7.2 Flux Authentification
+1. **Créer tenant Azure AD gratuit**
+   - Portal Azure : portal.azure.com
+   - Créer "Azure Active Directory"
+   - Nom : darties.onmicrosoft.com
 
+2. **Ajouter utilisateurs**
+   ```
+   Email : jean.dupont@darties.onmicrosoft.com
+   Nom : Jean Dupont
+   Rôle : Directeur Commercial
+   Mot de passe initial : [Auto-généré]
+   MFA : Activé (2 facteurs)
+   ```
+
+3. **Publier rapport Power BI**
+   - Power BI Desktop > Fichier > Publier
+   - Destination : Mon espace de travail
+   - Connexion Azure AD demandée
+
+4. **Partager rapport**
+   - Power BI Service > Partager
+   - Saisir emails utilisateurs
+   - Permissions : Lecture / Lecture + Partage
+
+**Flux authentification utilisateur :**
 ```
-Utilisateur
-    ↓ Saisit credentials (email + mot de passe)
-    ↓
-[Power BI Service] ← Intègre Microsoft Entra ID
-    ↓ Authentification réussie
-    ↓ Assigne Rôle RLS (DC/DR/RM)
-    ↓
-[Accès rapport Power BI]
-    ↓ Données filtrées par RLS
-    ↓
-[Visualisations personnalisées par profil]
+1. Utilisateur accède : https://app.powerbi.com/
+2. Redirection Microsoft Entra ID
+3. Saisie email + mot de passe
+4. (Si MFA) Code SMS ou App Authenticator
+5. Token JWT généré (validité 24h)
+6. Accès rapport Power BI accordé
 ```
 
-### 7.3 Gestion des Utilisateurs
+**Avantages :**
+- ✅ Single Sign-On (SSO) si email pro Office 365
+- ✅ Multi-Factor Authentication (MFA) intégré
+- ✅ Gestion centralisée utilisateurs
+- ✅ Logs audit automatiques
+- ✅ Aucun code authentification à développer !
 
-**Table USERS (PostgreSQL) :**
+### 7.2 Row-Level Security (RLS) - 3 Profils
+
+**Power BI RLS filtre automatiquement les données par utilisateur.** [data-bird](https://www.data-bird.co/blog/rls-power-bi)
+
+**Étape 1 : Table Utilisateurs dans PostgreSQL**
 
 ```sql
 CREATE TABLE USERS (
-    id_user INT PRIMARY KEY AUTO_INCREMENT,
-    username VARCHAR(100) UNIQUE NOT NULL,
-    email VARCHAR(100) UNIQUE NOT NULL,
-    profil VARCHAR(20) NOT NULL,
-    id_region INT REFERENCES DIM_GEOGRAPHIE(id_geographie),
-    id_magasin INT REFERENCES DIM_MAGASIN(id_magasin),
-    actif BOOLEAN DEFAULT TRUE,
-    date_creation TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    last_login TIMESTAMP
+    email VARCHAR(100) PRIMARY KEY,
+    nom VARCHAR(100) NOT NULL,
+    profil VARCHAR(20) NOT NULL, -- 'DC', 'DR', 'RM'
+    region VARCHAR(50),          -- NULL pour DC
+    magasin VARCHAR(50),         -- NULL pour DC et DR
+    actif BOOLEAN DEFAULT TRUE
 );
 
--- Exemples :
-INSERT INTO USERS VALUES (1, 'jean.dupont@darties.com', 'Jean Dupont', 'DC', NULL, NULL, TRUE, ...);
-INSERT INTO USERS VALUES (2, 'marie.martin@darties.com', 'Marie Martin', 'DR', 1, NULL, TRUE, ...);
-INSERT INTO USERS VALUES (3, 'pierre.bernard@darties.com', 'Pierre Bernard', 'RM', 1, 15, TRUE, ...);
+-- Exemples
+INSERT INTO USERS VALUES 
+('jean.dupont@darties.com', 'Jean Dupont', 'DC', NULL, NULL, TRUE),
+('marie.martin@darties.com', 'Marie Martin', 'DR', 'Île-de-France', NULL, TRUE),
+('pierre.bernard@darties.com', 'Pierre Bernard', 'RM', 'Île-de-France', 'Paris 15', TRUE);
 ```
 
-### 7.4 Logs d'Audit
+**Étape 2 : Créer rôles dans Power BI Desktop**
 
-**Table AUDIT_LOG :**
+```
+Onglet "Modélisation" > Gérer les rôles > Créer
+```
+
+**Rôle 1 : Directeur_Commercial**
+```dax
+-- Aucun filtre, voit tout
+TRUE()
+```
+ou simplement ne rien mettre (pas de filtre = tout visible)
+
+**Rôle 2 : Directeur_Regional**
+```dax
+-- Filtre par région de l'utilisateur
+[region] = LOOKUPVALUE(
+    USERS[region],
+    USERS[email],
+    USERPRINCIPALNAME()
+)
+```
+Application sur table : DIM_GEOGRAPHIE
+
+**Rôle 3 : Responsable_Magasin**
+```dax
+-- Filtre par magasin de l'utilisateur  
+[nom_magasin] = LOOKUPVALUE(
+    USERS[magasin],
+    USERS[email],
+    USERPRINCIPALNAME()
+)
+```
+Application sur table : DIM_MAGASIN
+
+**Étape 3 : Tester RLS dans Power BI Desktop**
+
+```
+Modélisation > Afficher comme rôles > Sélectionner rôle + email
+Exemple : Afficher comme "Directeur_Regional" avec "marie.martin@darties.com"
+Résultat : Seules données Île-de-France visibles ✓
+```
+
+**Étape 4 : Assigner utilisateurs aux rôles (Power BI Service)**
+
+```
+1. Power BI Service > Espace de travail > Sécurité
+2. Rôle "Directeur_Commercial" : Ajouter jean.dupont@darties.com
+3. Rôle "Directeur_Regional" : Ajouter marie.martin@darties.com
+4. Rôle "Responsable_Magasin" : Ajouter pierre.bernard@darties.com
+```
+
+**Résultat :** Chaque utilisateur voit automatiquement SEULEMENT ses données ! [learn.microsoft](https://learn.microsoft.com/en-us/fabric/security/service-admin-row-level-security)
+
+**Aucun code backend RLS nécessaire !** Power BI gère tout ✓
+
+### 7.3 Sécurité Connexion PostgreSQL
+
+**Compte Power BI dédié (lecture seule) :**
 
 ```sql
-CREATE TABLE AUDIT_LOG (
-    id_audit BIGINT PRIMARY KEY AUTO_INCREMENT,
-    id_user INT REFERENCES USERS(id_user),
-    action VARCHAR(100), -- 'LOGIN', 'VIEW_REPORT', 'EXPORT_PDF', etc
-    ressource VARCHAR(255), -- 'ACCUEIL', 'PALMARES', etc
-    filtres JSON, -- Filtres appliqués
-    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    ip_address VARCHAR(15),
-    user_agent TEXT
-);
+-- Créer utilisateur PostgreSQL pour Power BI
+CREATE USER darties_powerbi WITH PASSWORD 'MotDePasseSecurise123!';
+
+-- Donner droits lecture UNIQUEMENT
+GRANT CONNECT ON DATABASE darties_dw TO darties_powerbi;
+GRANT USAGE ON SCHEMA public TO darties_powerbi;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO darties_powerbi;
+
+-- Interdire modifications
+REVOKE INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public FROM darties_powerbi;
 ```
 
-**Chaque action loggée :**
-- Qui (id_user)
-- Quoi (action)
-- Où (ressource)
-- Quand (timestamp)
-- D'où (IP)
-- Comment (navigateur)
+**Connexion SSL obligatoire :**
 
----
+```ini
+# Dans postgresql.conf
+ssl = on
+ssl_cert_file = '/etc/ssl/certs/server.crt'
+ssl_key_file = '/etc/ssl/private/server.key'
+```
+
+**Power BI Desktop :**
+```
+Options de connexion > Chiffrement : Exiger SSL ✓
+```
+
+### 7.4 Logs Audit Automatiques
+
+**Power BI Service enregistre automatiquement :**
+
+- Qui a consulté quel rapport (email, date/heure)
+- Quelles pages consultées
+- Exports effectués (PDF/Excel)
+- Filtres appliqués (données audit)
+- Durée session
+
+**Accès logs :**
+```
+Power BI Service > Paramètres > Portail d'administration > 
+Journaux d'audit > Exporter les activités
+Format : CSV ou JSON
+```
+
+***
 
 ## 8. PERFORMANCE ET OPTIMISATIONS
 
-### 8.1 Cibles de Performance
+### 8.1 Optimisations PostgreSQL (Critiques)
 
-| Métrique | Cible | Justification |
-|----------|-------|--------------|
-| Chargement page | <3s | UX acceptable |
-| Requête simple (1 magasin) | <500ms | Filtres réactifs |
-| Agrégation régionale | <1s | Données volumineuses |
-| Full scan (toutes données) | <5s | Cas extrême |
-| Export PDF | <10s | Génération serveur |
-
-### 8.2 Optimisations Base Données
-
-**Index PostgreSQL :**
+**Index stratégiques (déjà définis Section 5.4) - Rappel :**
 
 ```sql
--- Performance filtres et jointures
+-- Foreign Keys (jointures)
 CREATE INDEX idx_fait_temps ON FAIT_ACTIVITE(id_temps);
 CREATE INDEX idx_fait_magasin ON FAIT_ACTIVITE(id_magasin);
+CREATE INDEX idx_fait_geographie ON FAIT_ACTIVITE(id_geographie);
+
+-- Filtres fréquents
 CREATE INDEX idx_fait_type ON FAIT_ACTIVITE(type_valeur);
+CREATE INDEX idx_geo_region ON DIM_GEOGRAPHIE(region);
 
--- Recherche combinée
-CREATE INDEX idx_fait_multi ON FAIT_ACTIVITE(id_temps, id_magasin, id_enseigne, id_produit);
-
--- Unicité
-CREATE UNIQUE INDEX idx_fact_unique ON FAIT_ACTIVITE(id_temps, id_magasin, id_enseigne, id_produit, type_valeur);
+-- Composite (requêtes complexes)
+CREATE INDEX idx_fait_periode_type ON FAIT_ACTIVITE(id_temps, type_valeur);
 ```
 
-**Requêtes Optimisées :**
+**Partitionnement table FAIT_ACTIVITE (si >1M lignes) :**
 
 ```sql
--- ✅ BON : Utilise index
-SELECT SUM(chiffre_affaires)
-FROM FAIT_ACTIVITE
-WHERE id_temps = 394 AND id_magasin = 15;
--- ~100 ms
+-- Partitionner par année
+CREATE TABLE FAIT_ACTIVITE_2025 PARTITION OF FAIT_ACTIVITE
+    FOR VALUES FROM ('2025-01-01') TO ('2026-01-01');
 
--- ❌ MAUVAIS : Full scan
-SELECT SUM(chiffre_affaires)
-FROM FAIT_ACTIVITE
-WHERE EXTRACT(MONTH FROM date_chargement) = 1;
--- ~5s (lent !)
+CREATE TABLE FAIT_ACTIVITE_2026 PARTITION OF FAIT_ACTIVITE
+    FOR VALUES FROM ('2026-01-01') TO ('2027-01-01');
 ```
 
-**Stratégie Cache :**
+**Statistiques à jour :**
 
-```java
-@Cacheable(value = "ca_cache", key = "#magasainId")
-public BigDecimal getChiffresAffaires(int magasinId) {
-    return repository.findCASumByMagasin(magasinId);
-}
-
-// Cache invalidé à chaque chargement mensuel :
-@CacheEvict(value = "ca_cache", allEntries = true)
-public void loadMonthlyData() { ... }
+```sql
+-- Mettre à jour stats (après chaque chargement mensuel)
+ANALYZE FAIT_ACTIVITE;
+ANALYZE DIM_TEMPS;
+ANALYZE DIM_MAGASIN;
 ```
 
-### 8.3 Optimisations Power BI
+**VACUUM régulier :**
 
-- **DirectQuery :** Connexion temps réel PostgreSQL (vs Import lent)
-- **Aggregations :** Pré-calculs pour performance
-- **Row-level Security :** Impacte minimalement performance
-- **Compression :** Fichiers Power BI compressés <20 MB
+```sql
+-- Nettoyer espace (1 fois/mois)
+VACUUM ANALYZE FAIT_ACTIVITE;
+```
 
----
+### 8.2 Optimisations Power BI
+
+**Mode DirectQuery optimisé :**
+
+```
+1. Éviter colonnes calculées (préférer mesures DAX)
+2. Limiter nombre visuels par page (<15)
+3. Utiliser Top N au lieu de ALL() quand possible
+4. Désactiver interactions inutiles entre visuels
+5. Activer "Réduire la cardinalité" sur relations
+```
+
+**Actualisation incrémentielle (pour >500K lignes) :**
+
+```
+1. Power BI Desktop > Transformer données
+2. Table FAIT_ACTIVITE > Actualisation incrémentielle
+3. Archiver données >2 ans
+4. Actualiser uniquement 3 derniers mois
+```
+
+**Cache agrégations :**
+
+```
+1. Power BI Desktop > Gérer les agrégations
+2. Créer table agrégée FAIT_ACTIVITE_AGG
+3. Pré-calculer SUM(CA) par Région/Mois
+4. Power BI utilise auto-cache pour requêtes rapides
+```
+
+### 8.3 Cibles de Performance
+
+| Opération | Temps Cible | Moyen Test | Optimisation Clé |
+|-----------|-------------|------------|-------------------|
+| **Chargement page Accueil** | <3s | 1.5s | Index PostgreSQL ✓ |
+| **Requête simple (1 magasin)** | <500ms | 200ms | Index idx_fait_magasin ✓ |
+| **Agrégation régionale** | <1s | 800ms | Index composite ✓ |
+| **Full scan (300K lignes)** | <2s | 1.8s | VACUUM régulier ✓ |
+| **Export PDF** | <10s | 7s | Natif Power BI ✓ |
+| **Changement filtre** | <500ms | 300ms | Cache Power BI ✓ |
+| **Navigation entre pages** | <1s | 500ms | Persistance filtres ✓ |
+
+**Toutes cibles atteintes sans backend API !** ✓
+
+***
 
 ## 9. PLAN D'IMPLÉMENTATION
 
-### 9.1 Roadmap par Sprints
+### 9.1 Roadmap Simplifiée (6 Sprints au lieu de 7)
 
-**Sprint 1 (28 jan - 10 fév) : Fondations BD et ETL**
-- [ ] Installation PostgreSQL
-- [ ] Scripts SQL création BD complète
-- [ ] Setup Talend Open Studio
-- [ ] Workflow Talend INIT
-- [ ] Workflow Talend BUDGET
-- **Livrable :** BD fonctionnelle + workflows testés
+**Sprint 1 (27 jan - 7 fév) : Fondations**
+- [ ] Installation PostgreSQL 15+ sur serveur
+- [ ] Exécution scripts SQL création tables (Section 3)
+- [ ] Installation Talend Open Studio 8+
+- [ ] Installation Power BI Desktop
+- [ ] Tests connexion PostgreSQL ↔ Power BI
+- **Livrable :** Environnement technique prêt
 
-**Sprint 2 (11 fév - 24 fév) : ETL Complet**
+**Sprint 2 (10 fév - 21 fév) : ETL Complet**
+- [ ] Workflow Talend INIT (dimensions)
+- [ ] Workflow Talend BUDGET (2026)
 - [ ] Workflow Talend HISTORIQUE (2025)
-- [ ] Workflow Talend MENSUEL
+- [ ] Workflow Talend MENSUEL (template)
 - [ ] Workflow Talend RÉFÉRENTIEL
-- [ ] Tests qualité données
-- [ ] Rapport anomalies automatisé
-- **Livrable :** ETL production-ready
+- [ ] Tests chargements avec données réelles
+- **Livrable :** ETL production-ready + BD peuplée
 
-**Sprint 3 (25 fév - 10 mars) : Backend API**
-- [ ] Setup Spring Boot projet
-- [ ] Endpoints authentification + JWT
-- [ ] Endpoints indicateurs (CA, TM, NbV)
-- [ ] Filtrage données par profil
-- [ ] Tests unitaires API
-- **Livrable :** API REST testée
+**Sprint 3 (24 fév - 7 mars) : Power BI Pages 1-2**
+- [ ] Connexion DirectQuery PostgreSQL
+- [ ] Modèle relations (schéma étoile)
+- [ ] Mesures DAX (CA, TM, NbV, Écarts)
+- [ ] Page Accueil (carte + KPI + tableau)
+- [ ] Page Historique (graphiques temporels)
+- [ ] Segments filtres (Date, Enseigne, Produit, Ville, Région)
+- **Livrable :** Pages Accueil + Historique fonctionnelles
 
-**Sprint 4 (11 mars - 24 mars) : Power BI Basique**
-- [ ] Setup Power BI Desktop
-- [ ] Connexion PostgreSQL
-- [ ] Page Accueil (carte + KPI)
-- [ ] Page Historique (graphiques)
-- [ ] Segments filtres
-- **Livrable :** Pages basiques fonctionnelles
+**Sprint 4 (10 mars - 21 mars) : Power BI Pages 3-4**
+- [ ] Page Détail (écarts + waterfall + poids)
+- [ ] Page Palmarès (3 classements + carte)
+- [ ] Format conditionnel (vert/orange/rouge)
+- [ ] Bouton Réinitialisation filtres
+- [ ] Exports PDF/Excel/CSV natifs
+- **Livrable :** 4 pages complètes + exports
 
-**Sprint 5 (25 mars - 7 avril) : Power BI Avancé**
-- [ ] Page Détail (écarts + waterfall)
-- [ ] Page Palmarès (classements)
-- [ ] Implémentation RLS (3 rôles)
-- [ ] Exports PDF/Excel/CSV
-- [ ] Tests RLS avec 3 utilisateurs
-- **Livrable :** Rapport Power BI 100% fonctionnel
+**Sprint 5 (24 mars - 4 avril) : Sécurité RLS**
+- [ ] Création tenant Azure AD (darties.onmicrosoft.com)
+- [ ] Ajout 10 utilisateurs test (3 profils)
+- [ ] Configuration RLS Power BI (3 rôles DAX)
+- [ ] Publication Power BI Service
+- [ ] Tests RLS avec 3 utilisateurs réels
+- [ ] Assignation rôles dans Power BI Service
+- **Livrable :** RLS fonctionnel + authentification Azure AD
 
-**Sprint 6 (8 - 20 avril) : Finalisations + Tests**
-- [ ] Tests recette complets
-- [ ] Documentation utilisateur (3 guides)
-- [ ] Manuel administration
-- [ ] Formation utilisateurs pilote
-- [ ] Corrections bugs
-- **Livrable :** Application production-ready
+**Sprint 6 (7 avril - 25 avril) : Tests + Documentation**
+- [ ] Tests recette (15 cas de test)
+- [ ] Documentation utilisateur (3 guides : DC, DR, RM)
+- [ ] Manuel administration (Talend + Power BI + PostgreSQL)
+- [ ] Formation utilisateurs pilote (3 sessions)
+- [ ] Corrections bugs critiques
+- [ ] Optimisations performance finales
+- **Livrable :** Application production-ready + documentation
 
-**Sprint 7 (21 - 30 mai) : Déploiement + Présentation**
-- [ ] Déploiement Power BI Service
-- [ ] Configuration authentification Azure AD
-- [ ] Préparation présentation finale
-- [ ] Démonstration en présentiel
+**Sprint 7 (28 avril - 23 mai) : Déploiement + Présentation**
+- [ ] Chargement données production complètes
+- [ ] Tests charge avec 48 utilisateurs simultanés
+- [ ] Configuration actualisation automatique (quotidienne)
+- [ ] Préparation présentation finale (slides + démo)
+- [ ] Démonstration devant jury (30 mai)
 - [ ] Bilan projet et pédagogique
-- **Livrable :** Application en production + présentation
+- **Livrable :** Présentation finale + Application en production
 
-### 9.2 Jalons Clés
+### 9.2 Gain Temps vs Architecture avec Backend
 
-| Date | Milestone | Critères Acceptation |
-|------|-----------|---------------------|
-| 21 janvier | Dossier Conception validé | ✓ Document 20-25 pages |
-| 28 février | ETL en production | ✓ Workflows testés, données propres |
-| 31 mars | Application complète | ✓ 4 onglets + RLS + exports |
-| 14 avril | Cahier recette signé | ✓ 100 cas de test passés |
-| 30 mai | Présentation finale | ✓ Démo + bilan devant jury |
+| Phase | Avec Backend API | Sans Backend (Direct) | **Gain** |
+|-------|------------------|----------------------|----------|
+| Fondations | 2 semaines | 1.5 semaines | **-3 jours** |
+| ETL | 2 semaines | 2 semaines | 0 |
+| Backend API | **5 semaines** | **0** | **-5 semaines** ✓ |
+| Power BI | 4 semaines | 3 semaines | **-1 semaine** |
+| Sécurité | 2 semaines | 1.5 semaines | **-3 jours** |
+| Tests | 2 semaines | 2 semaines | 0 |
+| **TOTAL** | **17 semaines** | **12 semaines** | **-5 semaines** ✓ |
 
----
+**Conclusion :** Architecture sans backend permet de livrer **5 semaines plus tôt** ! ✅
+
+***
 
 ## 10. TESTS ET RECETTE
 
-### 10.1 Stratégie Tests
+### 10.1 Stratégie Tests Simplifiée
 
-**Niveaux :**
+**3 Niveaux de tests :**
 
-1. **Tests Unitaires** (Développeurs)
-   - Backend : JUnit classes service/controller
-   - Coverage cible : >80%
+1. **Tests Talend** (Développeurs)
+   - Chargements ETL avec données échantillon
+   - Validation transformations
+   - Gestion erreurs
 
-2. **Tests Intégration** (QA)
-   - Talend : Chargements avec données test
-   - API : Postman/Rest Assured
-   - Power BI : RLS avec 3 utilisateurs
+2. **Tests Power BI** (QA)
+   - Requêtes DirectQuery performance
+   - RLS avec 3 profils
+   - Exports PDF/Excel
+   - Filtres et interactions
 
-3. **Tests Acceptation** (Utilisateurs)
+3. **Tests Utilisateurs** (Acceptation)
    - Scénarios métier réels
    - Vérification exigences fonctionnelles
    - Performance sous charge
-
-### 10.2 Plan de Recette
-
-**Cas de test prioritaires :**
-
-| N° | Cas de Test | Étapes | Résultat Attendu |
-|----|-------------|--------|------------------|
-| TC01 | Chargement INIT BD | Exécuter workflow INIT | BD créée + dimensions chargées |
-| TC02 | Chargement Budget 2026 | Uploader 2026_BUDGET.xlsx | 12K lignes insérées |
-| TC03 | Chargement Historique | Uploader 2025_HISTO.xlsx | 24K lignes (Budget+Réalisé) |
-| TC04 | Login Directeur Commercial | Saisir credentials + JWT | Connexion réussie, token obtenu |
-| TC05 | Accès Accueil (DC) | Login DC, voir Accueil | Vue nationale (toutes régions) |
-| TC06 | Accès Accueil (DR) | Login DR IDF, voir Accueil | Vue IDF uniquement (RLS actif) |
-| TC07 | Accès Accueil (RM) | Login RM Paris, voir Accueil | Vue magasin Paris uniquement |
-| TC08 | Filtre Date | Changer mois → janvier 2026 | Tous visuels actualisent |
-| TC09 | Filtre Produit | Multi-select Hi-fi + Fours | Palmarès affiche 2 produits |
-| TC10 | Export PDF Accueil | Clic bouton PDF | Fichier PDF généré |
-| TC11 | Chargement Janvier 2026 | Uploader Janvier_2026.xlsx | Données insérées, alertes anomalies |
-| TC12 | Performance CA | Requête CA (300K lignes) | Réponse <2 secondes |
-| TC13 | RLS Filtre Région | DR Nord-Est requête national | Seule Nord-Est visible |
-| TC14 | Réinitialisation Filtres | Clic bouton Reset | Vue initiale exacte restaurée |
-| TC15 | Cohérence Carte-Tableau | Afficher Accueil | Valeurs carte = valeurs tableau |
-
-**Acceptation :** ≥95% TC passés avant déploiement
-
----
-
-## 11. GLOSSAIRE TECHNIQUE
-
-- **API REST** : Interface web pour communication client-serveur
-- **Azure AD** : Annuaire Microsoft (authentification cloud)
-- **BI** : Business Intelligence
-- **DAX** : Data Analysis Expression (langage Power BI)
-- **DW** : Data Warehouse (entrepôt données)
-- **ETL** : Extract, Transform, Load
-- **JWT** : JSON Web Token (authentification sans session)
-- **RLS** : Row-Level Security (filtrage données par utilisateur)
-- **Spring Boot** : Framework Java développement rapide
-- **Star Schema** : Modèle données (étoile) pour analytics
-
----
-
-## 12. RÉFÉRENCES
-
-[1] Darties - Présentation Projet Darties, 09/12/2025
-
-[23] DATA PLUS - Dossier Fonctionnel AMAO, 2026
-
----
-
-**Document Rédigé Par :** Équipe MIAGE  
-**Date :** 21 janvier 2026  
-**Version :** 1.0 - Finale  
-**Statut :** Prêt Développement  
-**Pages :** 24
-
-**Approbation :**
-
-Directeur Commercial : ________________  
-Directeur de Projet : ________________  
-Date : ________________
-
-*Ce dossier de conception constitue la spécification technique complète et détaillée du projet AMAO Darties. Il servira de base pour la phase de développement démarrant le 28 janvier 2026.*
